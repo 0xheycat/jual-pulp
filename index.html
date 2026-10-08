@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Jual PULP</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0e0f12; color: #f4f4f5; }
+    main { max-width: 420px; margin: 0 auto; padding: 24px 16px 48px; }
+    h1 { font-size: 22px; margin: 0 0 6px; }
+    p { color: #a1a1aa; font-size: 14px; line-height: 1.45; }
+    button { width: 100%; border: 0; border-radius: 12px; padding: 14px; font-size: 16px; font-weight: 650; margin: 8px 0; }
+    button:disabled { opacity: .45; }
+    .primary { background: #ff37c7; color: #1a0b14; }
+    .ghost { background: #23252b; color: #fff; }
+    code { font-size: 12px; word-break: break-all; color: #d4d4d8; }
+    #log { white-space: pre-wrap; background: #17181c; border-radius: 12px; padding: 12px; min-height: 72px; font-size: 13px; }
+    .warn { color: #fbbf24; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Jual PULP</h1>
+  <p>Hanya approve PULP ke router Uniswap V2, lalu swap. Tidak meminta seed atau private key.</p>
+  <p class="warn">Buka halaman ini di browser wallet (Rabby / MetaMask), bukan lewat link sembarangan.</p>
+  <button id="connect" class="ghost">Connect wallet</button>
+  <p>Wallet: <code id="account">belum connect</code></p>
+  <p>PULP: <code id="bal">-</code><br>Allowance: <code id="allow">-</code></p>
+  <button id="approve" class="ghost" disabled>1. Approve 83.365 PULP</button>
+  <button id="sell" class="primary" disabled>2. Jual ke ETH</button>
+  <div id="log">Siap.</div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
+<script>
+const CHAIN_ID = 4663;
+const TOKEN = "0x170867335fc4eeff6c2b4d07de6fc8b4f57048d0";
+const ROUTER = "0x89e5DB8B5aA49aA85AC63f691524311AEB649eba";
+const WETH = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73";
+const AMOUNT = 83365n * 10n ** 18n;
+const MIN_OUT = 6000000000000000n;
+const erc20Abi = [
+  "function balanceOf(address) view returns (uint256)",
+  "function allowance(address,address) view returns (uint256)",
+  "function approve(address,uint256) returns (bool)"
+];
+const routerAbi = [
+  "function swapExactTokensForETHSupportingFeeOnTransferTokens(uint256,uint256,address[],address,uint256)"
+];
+const logEl = document.getElementById("log");
+const log = (m) => { logEl.textContent = m; };
+let provider, signer, account;
+
+function rawProvider() {
+  return window.ethereum || window.rabby || window.okxwallet;
+}
+
+async function ensureChain() {
+  const hex = "0x" + CHAIN_ID.toString(16);
+  try {
+    await rawProvider().request({ method: "wallet_switchEthereumChain", params: [{ chainId: hex }] });
+  } catch (e) {
+    if (e.code === 4902) {
+      await rawProvider().request({
+        method: "wallet_addEthereumChain",
+        params: [{
+          chainId: hex,
+          chainName: "Robinhood Chain",
+          nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
+          rpcUrls: ["https://rpc.mainnet.chain.robinhood.com"],
+          blockExplorerUrls: ["https://robinhoodchain.blockscout.com"]
+        }]
+      });
+    } else throw e;
+  }
+}
+
+async function refresh() {
+  const token = new ethers.Contract(TOKEN, erc20Abi, provider);
+  const bal = await token.balanceOf(account);
+  const allow = await token.allowance(account, ROUTER);
+  document.getElementById("bal").textContent = ethers.formatUnits(bal, 18);
+  document.getElementById("allow").textContent = allow > 0n ? "sudah ada" : "belum";
+  document.getElementById("sell").disabled = allow < AMOUNT;
+}
+
+document.getElementById("connect").onclick = async () => {
+  try {
+    if (!rawProvider()) throw new Error("Buka di browser wallet. Tidak ada provider.");
+    await ensureChain();
+    provider = new ethers.BrowserProvider(rawProvider());
+    signer = await provider.getSigner();
+    account = await signer.getAddress();
+    document.getElementById("account").textContent = account;
+    document.getElementById("approve").disabled = false;
+    await refresh();
+    log("Chain Robinhood. Lanjut approve.");
+  } catch (e) {
+    log(e.shortMessage || e.message || String(e));
+  }
+};
+
+document.getElementById("approve").onclick = async () => {
+  try {
+    log("Menunggu approve...");
+    const token = new ethers.Contract(TOKEN, erc20Abi, signer);
+    const tx = await token.approve(ROUTER, AMOUNT);
+    log("Approve dikirim " + tx.hash);
+    await tx.wait();
+    await refresh();
+    log("Approve sukses. Lanjut jual.");
+  } catch (e) {
+    log(e.shortMessage || e.message || String(e));
+  }
+};
+
+document.getElementById("sell").onclick = async () => {
+  try {
+    log("Menunggu swap...");
+    const router = new ethers.Contract(ROUTER, routerAbi, signer);
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + 1800);
+    const tx = await router.swapExactTokensForETHSupportingFeeOnTransferTokens(
+      AMOUNT, MIN_OUT, [TOKEN, WETH], account, deadline
+    );
+    log("Swap dikirim " + tx.hash);
+    await tx.wait();
+    await refresh();
+    log("Swap sukses. Cek saldo ETH.");
+  } catch (e) {
+    log(e.shortMessage || e.message || String(e));
+  }
+};
+</script>
+</body>
+</html>
