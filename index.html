@@ -1,120 +1,17 @@
 <!DOCTYPE html>
-<html lang="id">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Jual PULP</title>
-  <style>
-    :root { color-scheme: dark; }
-    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0e0f12; color: #f4f4f5; }
-    main { max-width: 420px; margin: 0 auto; padding: 24px 16px 48px; }
-    h1 { font-size: 22px; margin: 0 0 6px; }
-    p { color: #a1a1aa; font-size: 14px; line-height: 1.45; }
-    button { width: 100%; border: 0; border-radius: 12px; padding: 14px; font-size: 16px; font-weight: 650; margin: 8px 0; }
-    button:disabled { opacity: .45; }
-    .primary { background: #ff37c7; color: #1a0b14; }
-    .ghost { background: #23252b; color: #fff; }
-    code { font-size: 12px; word-break: break-all; color: #d4d4d8; }
-    #log { white-space: pre-wrap; background: #17181c; border-radius: 12px; padding: 12px; min-height: 72px; font-size: 13px; }
-    .warn { color: #fbbf24; }
-  </style>
-</head>
-<body>
-<main>
-  <h1>Jual PULP</h1>
-  <p>Approve PULP ke router Uniswap V2, lalu jual. Tidak minta seed atau private key.</p>
-  <p class="warn">Buka lewat browser di dalam wallet. Jangan buka halaman github.com/blob.</p>
-  <button id="connect" class="ghost">Connect wallet</button>
-  <p>Wallet: <code id="account">belum connect</code></p>
-  <p>PULP: <code id="bal">-</code><br>Allowance: <code id="allow">-</code></p>
-  <button id="approve" class="ghost" disabled>1. Approve 83.365 PULP</button>
-  <button id="sell" class="primary" disabled>2. Jual ke ETH</button>
-  <div id="log">Siap.</div>
-</main>
-<script>
-const CHAIN_ID = 4663;
-const TOKEN = "0x170867335fc4eeff6c2b4d07de6fc8b4f57048d0";
-const ROUTER = "0x89e5DB8B5aA49aA85AC63f691524311AEB649eba";
-const WETH = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73";
-const RPC = "https://rpc.mainnet.chain.robinhood.com";
-const AMOUNT = 83365n * 10n ** 18n;
-const MIN_OUT = 6000000000000000n;
-const logEl = document.getElementById("log");
-const log = (m) => { logEl.textContent = String(m); };
-let account = null;
-function eth() { return window.ethereum || window.rabby || window.okxwallet; }
-function pad(hex) { return hex.toLowerCase().replace(/^0x/, "").padStart(64, "0"); }
-function word(n) { return n.toString(16).padStart(64, "0"); }
-function addr(a) { return pad(a); }
-async function rpc(method, params) {
-  const res = await fetch(RPC, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
-  const data = await res.json();
-  if (data.error) throw new Error(data.error.message || "rpc error");
-  return data.result;
-}
-async function ensureChain() {
-  const provider = eth();
-  const hex = "0x" + CHAIN_ID.toString(16);
-  try { await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: hex }] }); }
-  catch (e) {
-    if (e.code === 4902 || String(e.message || "").includes("Unrecognized")) {
-      await provider.request({ method: "wallet_addEthereumChain", params: [{ chainId: hex, chainName: "Robinhood Chain", nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 }, rpcUrls: [RPC], blockExplorerUrls: ["https://robinhoodchain.blockscout.com"] }] });
-    } else throw e;
-  }
-}
-async function refresh() {
-  const bal = BigInt(await rpc("eth_call", [{ to: TOKEN, data: "0x70a08231" + addr(account) }, "latest"]));
-  const allow = BigInt(await rpc("eth_call", [{ to: TOKEN, data: "0xdd62ed3e" + addr(account) + addr(ROUTER) }, "latest"]));
-  document.getElementById("bal").textContent = (Number(bal) / 1e18).toFixed(4);
-  document.getElementById("allow").textContent = allow >= AMOUNT ? "sudah ada" : "belum";
-  document.getElementById("sell").disabled = allow < AMOUNT;
-}
-async function send(to, data) {
-  return eth().request({ method: "eth_sendTransaction", params: [{ from: account, to, data, value: "0x0" }] });
-}
-async function wait(hash) {
-  for (let i = 0; i < 40; i++) {
-    const rec = await rpc("eth_getTransactionReceipt", [hash]);
-    if (rec) { if (rec.status === "0x0") throw new Error("Transaksi gagal " + hash); return rec; }
-    await new Promise((r) => setTimeout(r, 1500));
-  }
-  throw new Error("Masih pending " + hash);
-}
-document.getElementById("connect").onclick = async () => {
-  try {
-    if (!eth()) throw new Error("Tidak ada wallet. Buka halaman ini di browser Rabby atau MetaMask.");
-    await ensureChain();
-    const accounts = await eth().request({ method: "eth_requestAccounts" });
-    account = accounts[0];
-    document.getElementById("account").textContent = account;
-    document.getElementById("approve").disabled = false;
-    await refresh();
-    log("Chain Robinhood. Lanjut approve.");
-  } catch (e) { log(e.message || e); }
-};
-document.getElementById("approve").onclick = async () => {
-  try {
-    log("Menunggu approve...");
-    const data = "0x095ea7b3" + addr(ROUTER) + word(AMOUNT);
-    const hash = await send(TOKEN, data);
-    log("Approve dikirim " + hash);
-    await wait(hash);
-    await refresh();
-    log("Approve sukses. Lanjut jual.");
-  } catch (e) { log(e.message || e); }
-};
-document.getElementById("sell").onclick = async () => {
-  try {
-    log("Menunggu swap...");
-    const deadline = BigInt(Math.floor(Date.now() / 1000) + 1800);
-    const data = "0x791ac947" + word(AMOUNT) + word(MIN_OUT) + word(160n) + addr(account) + word(deadline) + word(2n) + addr(TOKEN) + addr(WETH);
-    const hash = await send(ROUTER, data);
-    log("Swap dikirim " + hash);
-    await wait(hash);
-    await refresh();
-    log("Swap sukses. Cek saldo ETH.");
-  } catch (e) { log(e.message || e); }
-};
-</script>
-</body>
-</html>
+<html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Jual PULP</title><style>body{margin:0;background:#0e0f12;color:#fff;font-family:-apple-system,sans-serif}main{max-width:420px;margin:0 auto;padding:28px 16px}button{width:100%;border:0;border-radius:14px;padding:16px;font-size:16px;font-weight:700;margin:8px 0}button:disabled{opacity:.4}.go{background:#ff37c7;color:#1a0b14}.alt{background:#23252b;color:#fff}#log{background:#17181c;border-radius:12px;padding:12px;min-height:64px;white-space:pre-wrap;font-size:14px}p{color:#a1a1aa}</style></head><body><main><h1>Jual PULP</h1><p>Dapp jual 83.365 PULP ke ETH di Robinhood Chain. Tidak minta private key.</p><button id="connect" class="alt">Connect wallet</button><p id="who">Wallet: belum connect</p><button id="approve" class="alt" disabled>1. Approve</button><button id="sell" class="go" disabled>2. Jual ke ETH</button><div id="log">Siap. Tekan Connect.</div></main><script>
+const TOKEN="0x170867335fc4eeff6c2b4d07de6fc8b4f57048d0",ROUTER="0x89e5DB8B5aA49aA85AC63f691524311AEB649eba",WETH="0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",RPC="https://rpc.mainnet.chain.robinhood.com";
+const AMOUNT=83365n*10n**18n,MIN_OUT=6000000000000000n;let account=null;
+const log=m=>document.getElementById("log").textContent=String(m);
+const eth=()=>window.ethereum||window.rabby||window.okxwallet;
+const pad=h=>h.toLowerCase().replace(/^0x/,"").padStart(64,"0");
+const word=n=>n.toString(16).padStart(64,"0");
+async function rpc(method,params){const r=await fetch(RPC,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method,params})});const d=await r.json();if(d.error)throw new Error(d.error.message);return d.result}
+async function chain(){const id="0x1237";try{await eth().request({method:"wallet_switchEthereumChain",params:[{chainId:id}]})}catch(e){if(e.code===4902)await eth().request({method:"wallet_addEthereumChain",params:[{chainId:id,chainName:"Robinhood Chain",nativeCurrency:{name:"ETH",symbol:"ETH",decimals:18},rpcUrls:[RPC],blockExplorerUrls:["https://robinhoodchain.blockscout.com"]}]});else throw e}}
+async function refresh(){const bal=BigInt(await rpc("eth_call",[{to:TOKEN,data:"0x70a08231"+pad(account)},"latest"]));const allow=BigInt(await rpc("eth_call",[{to:TOKEN,data:"0xdd62ed3e"+pad(account)+pad(ROUTER)},"latest"]));document.getElementById("sell").disabled=allow<AMOUNT;log("PULP "+(Number(bal)/1e18).toFixed(2)+" | allowance "+(allow>=AMOUNT?"siap":"belum"))}
+async function send(to,data){return eth().request({method:"eth_sendTransaction",params:[{from:account,to,data,value:"0x0"}]})}
+async function wait(hash){for(let i=0;i<40;i++){const rec=await rpc("eth_getTransactionReceipt",[hash]);if(rec){if(rec.status==="0x0")throw new Error("gagal "+hash);return}await new Promise(r=>setTimeout(r,1500))}throw new Error("pending "+hash)}
+document.getElementById("connect").onclick=async()=>{try{if(!eth())throw new Error("Buka URL ini di browser wallet, bukan Safari.");await chain();account=(await eth().request({method:"eth_requestAccounts"}))[0];document.getElementById("who").textContent=account;document.getElementById("approve").disabled=false;await refresh()}catch(e){log(e.message||e)}};
+document.getElementById("approve").onclick=async()=>{try{log("Approve...");const hash=await send(TOKEN,"0x095ea7b3"+pad(ROUTER)+word(AMOUNT));await wait(hash);await refresh();log("Approve sukses. Tekan jual.")}catch(e){log(e.message||e)}};
+document.getElementById("sell").onclick=async()=>{try{log("Swap...");const deadline=BigInt(Math.floor(Date.now()/1000)+1800);const data="0x791ac947"+word(AMOUNT)+word(MIN_OUT)+word(160n)+pad(account)+word(deadline)+word(2n)+pad(TOKEN)+pad(WETH);const hash=await send(ROUTER,data);await wait(hash);log("Terjual. Cek ETH.")}catch(e){log(e.message||e)}};
+</script></body></html>
