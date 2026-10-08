@@ -1,17 +1,68 @@
 <!DOCTYPE html>
-<html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Jual PULP</title><style>body{margin:0;background:#0e0f12;color:#fff;font-family:-apple-system,sans-serif}main{max-width:420px;margin:0 auto;padding:28px 16px}button{width:100%;border:0;border-radius:14px;padding:16px;font-size:16px;font-weight:700;margin:8px 0}button:disabled{opacity:.4}.go{background:#ff37c7;color:#1a0b14}.alt{background:#23252b;color:#fff}#log{background:#17181c;border-radius:12px;padding:12px;min-height:64px;white-space:pre-wrap;font-size:14px}p{color:#a1a1aa}</style></head><body><main><h1>Jual PULP</h1><p>Dapp jual 83.365 PULP ke ETH di Robinhood Chain. Tidak minta private key.</p><button id="connect" class="alt">Connect wallet</button><p id="who">Wallet: belum connect</p><button id="approve" class="alt" disabled>1. Approve</button><button id="sell" class="go" disabled>2. Jual ke ETH</button><div id="log">Siap. Tekan Connect.</div></main><script>
-const TOKEN="0x170867335fc4eeff6c2b4d07de6fc8b4f57048d0",ROUTER="0x89e5DB8B5aA49aA85AC63f691524311AEB649eba",WETH="0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",RPC="https://rpc.mainnet.chain.robinhood.com";
-const AMOUNT=83365n*10n**18n,MIN_OUT=6000000000000000n;let account=null;
-const log=m=>document.getElementById("log").textContent=String(m);
-const eth=()=>window.ethereum||window.rabby||window.okxwallet;
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Swap PULP</title>
+  <style>
+    body { margin: 0; background: #07080b; color: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+    main { max-width: 420px; margin: 0 auto; padding: 28px 16px 48px; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    .sub { color: #a1a1aa; font-size: 13px; margin: 0 0 18px; }
+    .card { background: #14161c; border: 1px solid #262933; border-radius: 18px; padding: 14px; }
+    .row { display: flex; justify-content: space-between; align-items: center; }
+    input { width: 100%; background: transparent; border: 0; color: #fff; font-size: 28px; font-weight: 650; outline: none; margin-top: 8px; }
+    .token { background: #23262f; border-radius: 999px; padding: 8px 12px; font-weight: 700; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+    .tabs button, button.action { border: 0; border-radius: 12px; padding: 12px; font-weight: 700; }
+    .tabs button { flex: 1; background: #1c1f27; color: #d4d4d8; }
+    .tabs button.on { background: #ff37c7; color: #1a0b14; }
+    button.action { width: 100%; margin-top: 14px; background: #ff37c7; color: #1a0b14; font-size: 16px; }
+    #log { margin-top: 14px; background: #101218; border-radius: 12px; padding: 12px; min-height: 56px; white-space: pre-wrap; font-size: 13px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Swap PULP</h1>
+  <p class="sub">Robinhood Chain, Uniswap V2, MetaMask. Tidak minta seed.</p>
+  <div class="tabs">
+    <button id="tabSell" class="on" type="button">Jual</button>
+    <button id="tabBuy" type="button">Beli</button>
+  </div>
+  <div class="card">
+    <div class="row"><span>Bayar</span><span class="token" id="payToken">PULP</span></div>
+    <input id="amount" inputmode="decimal" value="83365" />
+    <p class="sub" id="bal">Saldo: -</p>
+  </div>
+  <p class="sub" id="quote">Estimasi: -</p>
+  <button id="go" class="action" type="button">Connect MetaMask</button>
+  <div id="log">Buka di browser MetaMask.</div>
+</main>
+<script>
+const TOKEN="0x170867335fc4eeff6c2b4d07de6fc8b4f57048d0";
+const ROUTER="0x89e5DB8B5aA49aA85AC63f691524311AEB649eba";
+const WETH="0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73";
+const RPC="https://rpc.mainnet.chain.robinhood.com";
+const CHAIN="0x1237";
+let mode="sell", account=null;
+const log=m=>{document.getElementById("log").textContent=String(m)};
+const eth=()=>window.ethereum;
 const pad=h=>h.toLowerCase().replace(/^0x/,"").padStart(64,"0");
-const word=n=>n.toString(16).padStart(64,"0");
-async function rpc(method,params){const r=await fetch(RPC,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method,params})});const d=await r.json();if(d.error)throw new Error(d.error.message);return d.result}
-async function chain(){const id="0x1237";try{await eth().request({method:"wallet_switchEthereumChain",params:[{chainId:id}]})}catch(e){if(e.code===4902)await eth().request({method:"wallet_addEthereumChain",params:[{chainId:id,chainName:"Robinhood Chain",nativeCurrency:{name:"ETH",symbol:"ETH",decimals:18},rpcUrls:[RPC],blockExplorerUrls:["https://robinhoodchain.blockscout.com"]}]});else throw e}}
-async function refresh(){const bal=BigInt(await rpc("eth_call",[{to:TOKEN,data:"0x70a08231"+pad(account)},"latest"]));const allow=BigInt(await rpc("eth_call",[{to:TOKEN,data:"0xdd62ed3e"+pad(account)+pad(ROUTER)},"latest"]));document.getElementById("sell").disabled=allow<AMOUNT;log("PULP "+(Number(bal)/1e18).toFixed(2)+" | allowance "+(allow>=AMOUNT?"siap":"belum"))}
-async function send(to,data){return eth().request({method:"eth_sendTransaction",params:[{from:account,to,data,value:"0x0"}]})}
-async function wait(hash){for(let i=0;i<40;i++){const rec=await rpc("eth_getTransactionReceipt",[hash]);if(rec){if(rec.status==="0x0")throw new Error("gagal "+hash);return}await new Promise(r=>setTimeout(r,1500))}throw new Error("pending "+hash)}
-document.getElementById("connect").onclick=async()=>{try{if(!eth())throw new Error("Buka URL ini di browser wallet, bukan Safari.");await chain();account=(await eth().request({method:"eth_requestAccounts"}))[0];document.getElementById("who").textContent=account;document.getElementById("approve").disabled=false;await refresh()}catch(e){log(e.message||e)}};
-document.getElementById("approve").onclick=async()=>{try{log("Approve...");const hash=await send(TOKEN,"0x095ea7b3"+pad(ROUTER)+word(AMOUNT));await wait(hash);await refresh();log("Approve sukses. Tekan jual.")}catch(e){log(e.message||e)}};
-document.getElementById("sell").onclick=async()=>{try{log("Swap...");const deadline=BigInt(Math.floor(Date.now()/1000)+1800);const data="0x791ac947"+word(AMOUNT)+word(MIN_OUT)+word(160n)+pad(account)+word(deadline)+word(2n)+pad(TOKEN)+pad(WETH);const hash=await send(ROUTER,data);await wait(hash);log("Terjual. Cek ETH.")}catch(e){log(e.message||e)}};
-</script></body></html>
+const word=n=>BigInt(n).toString(16).padStart(64,"0");
+function parseAmount(text){const [a,b=""]=String(text).trim().split(".");const frac=(b+"000000000000000000").slice(0,18);return BigInt(a||"0")*10n**18n+BigInt(frac)}
+function fmt(n){const v=Number(n)/1e18;return Number.isFinite(v)?v.toFixed(v<1?6:2):"-"}
+async function rpc(method,params){const res=await fetch(RPC,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method,params})});const data=await res.json();if(data.error)throw new Error(data.error.message||"rpc");return data.result}
+async function quote(){try{const amount=parseAmount(document.getElementById("amount").value);if(amount<=0n)return;const path=mode==="sell"?[TOKEN,WETH]:[WETH,TOKEN];const data="0xd06ca61f"+word(amount)+word(64)+word(2)+pad(path[0])+pad(path[1]);const out=await rpc("eth_call",[{to:ROUTER,data},"latest"]);const second=BigInt("0x"+out.slice(2+64*2,2+64*3));document.getElementById("quote").textContent="Estimasi terima "+fmt(second)+(mode==="sell"?" ETH":" PULP")}catch(e){document.getElementById("quote").textContent="Estimasi gagal"}}
+async function refreshBal(){if(!account)return;if(mode==="sell"){const bal=BigInt(await rpc("eth_call",[{to:TOKEN,data:"0x70a08231"+pad(account)},"latest"]));document.getElementById("bal").textContent="Saldo PULP: "+fmt(bal)}else{const bal=BigInt(await rpc("eth_getBalance",[account,"latest"]));document.getElementById("bal").textContent="Saldo ETH: "+fmt(bal)}}
+function setMode(next){mode=next;document.getElementById("tabSell").className=next==="sell"?"on":"";document.getElementById("tabBuy").className=next==="buy"?"on":"";document.getElementById("payToken").textContent=next==="sell"?"PULP":"ETH";document.getElementById("amount").value=next==="sell"?"83365":"0.001";document.getElementById("go").textContent=account?(next==="sell"?"Jual PULP":"Beli PULP"):"Connect MetaMask";refreshBal();quote()}
+async function ensureChain(){try{await eth().request({method:"wallet_switchEthereumChain",params:[{chainId:CHAIN}]})}catch(e){if(e.code===4902){await eth().request({method:"wallet_addEthereumChain",params:[{chainId:CHAIN,chainName:"Robinhood Chain",nativeCurrency:{name:"ETH",symbol:"ETH",decimals:18},rpcUrls:[RPC],blockExplorerUrls:["https://robinhoodchain.blockscout.com"]}]})}else throw e}}
+async function send(tx){return eth().request({method:"eth_sendTransaction",params:[tx]})}
+async function wait(hash){for(let i=0;i<40;i++){const rec=await rpc("eth_getTransactionReceipt",[hash]);if(rec){if(rec.status==="0x0")throw new Error("Transaksi gagal "+hash);return rec}await new Promise(r=>setTimeout(r,1500))}throw new Error("Masih pending "+hash)}
+document.getElementById("tabSell").onclick=()=>setMode("sell");
+document.getElementById("tabBuy").onclick=()=>setMode("buy");
+document.getElementById("amount").oninput=quote;
+document.getElementById("go").onclick=async()=>{try{if(!eth()){log("MetaMask tidak terdeteksi. Buka URL ini lewat browser MetaMask.");return}await ensureChain();if(!account){account=(await eth().request({method:"eth_requestAccounts"}))[0];document.getElementById("go").textContent=mode==="sell"?"Jual PULP":"Beli PULP";await refreshBal();log("Terhubung "+account);return}const amount=parseAmount(document.getElementById("amount").value);const deadline=BigInt(Math.floor(Date.now()/1000)+1800);if(mode==="sell"){log("Approve PULP...");const approve=await send({from:account,to:TOKEN,data:"0x095ea7b3"+pad(ROUTER)+word(amount),value:"0x0"});await wait(approve);log("Swap jual...");const data="0x791ac947"+word(amount)+word(1)+word(160)+pad(account)+word(deadline)+word(2)+pad(TOKEN)+pad(WETH);const hash=await send({from:account,to:ROUTER,data,value:"0x0"});await wait(hash);log("Jual sukses "+hash)}else{log("Swap beli...");const data="0xb6f9de95"+word(1)+word(128)+pad(account)+word(deadline)+word(2)+pad(WETH)+pad(TOKEN);const hash=await send({from:account,to:ROUTER,data,value:"0x"+amount.toString(16)});await wait(hash);log("Beli sukses "+hash)}await refreshBal()}catch(e){log(e.message||e)}};
+quote();
+</script>
+</body>
+</html>
